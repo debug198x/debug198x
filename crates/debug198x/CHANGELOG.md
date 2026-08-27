@@ -12,6 +12,12 @@ the crate. Released history restarts at 0.1.0 here, under its own version.
 
 ## [Unreleased]
 
+## [0.1.0](https://github.com/debug198x/debug198x/releases/tag/debug198x-v0.1.0) - 2026-08-27
+
+### Other
+
+- Make debug198x a repo of its own
+
 ## [0.0.35](https://github.com/asm198x/asm198x/compare/debug198x-v0.0.34...debug198x-v0.0.35) - 2026-08-27
 
 ### Added
