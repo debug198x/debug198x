@@ -1,0 +1,159 @@
+name: Release-plz
+
+on:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: release-plz-${{ github.ref }}
+  cancel-in-progress: false
+
+# No PAT: the default GITHUB_TOKEN drives everything. Opening the release PR
+# needs the org/repo setting "Allow GitHub Actions to create and approve pull
+# requests" enabled (Settings -> Actions -> General). id-token is for the OIDC
+# publish below — no stored crates.io token.
+permissions:
+  pull-requests: write
+  contents: write
+  id-token: write
+
+jobs:
+  release-plz:
+    name: Release-plz
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Read pinned toolchain
+        id: toolchain
+        run: |
+          channel=$(awk -F'"' '/^channel/{print $2}' rust-toolchain.toml)
+          echo "channel=${channel}" >> "$GITHUB_OUTPUT"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.toolchain.outputs.channel }}
+
+      # Open/update the per-crate "chore: release" PR for new commits.
+      - name: Run release-plz (open/update release PR)
+        uses: release-plz/action@v0.5
+        with:
+          command: release-pr
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Once a release PR is merged, tag the released crate(s). publish = false
+      # in release-plz.toml, so this only bumps/changelogs/tags — the publish
+      # step below does crates.io over OIDC.
+      - name: Run release-plz (tag merged releases)
+        id: release
+        uses: release-plz/action@v0.5
+        with:
+          command: release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Publish whatever was just released to crates.io over Trusted Publishing.
+      # Gated on releases_created, so the OIDC exchange happens only on an actual
+      # release — never on an ordinary push, and never needing a stored token.
+      - name: Authenticate to crates.io (Trusted Publishing)
+        if: steps.release.outputs.releases_created == 'true'
+        uses: rust-lang/crates-io-auth-action@v1
+        id: auth
+
+      - name: Publish released crates
+        if: steps.release.outputs.releases_created == 'true'
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+          RELEASES: ${{ steps.release.outputs.releases }}
+        run: |
+          set -euo pipefail
+          # Idempotent: a re-run (e.g. after a partial failure where one crate
+          # published and another errored) must not fail on the crate already
+          # on crates.io. Check each version before publishing and skip the ones
+          # that are already there. Matches build198x's check-before-publish.
+          echo "$RELEASES" | jq -r '.[] | "\(.package_name) \(.version)"' \
+            | while read -r pkg version; do
+            if curl -sf -A "198x-ci (steve@stevehill.xyz)" \
+                 "https://crates.io/api/v1/crates/$pkg/$version" >/dev/null; then
+              echo "$pkg $version already on crates.io — skipping."
+            else
+              echo "Publishing $pkg $version"
+              cargo publish -p "$pkg"
+            fi
+          done
+
+      # Announce the release in Discord.
+      #
+      # release-plz reports only package_name, version and tag — no notes. The
+      # notes it wrote are in each crate's CHANGELOG.md, committed by the
+      # release PR, so main already holds them when this runs. The script reads
+      # them there, which gives every crate its own changelog in the
+      # announcement rather than a bare list of links.
+      #
+      # Reads DISCORD_RELEASE_WEBHOOK (this project's channel) and
+      # DISCORD_RELEASE_WEBHOOK_ALL (a channel carrying every repo), both
+      # optional. With neither set the step logs and succeeds — a missing
+      # notification must not fail a release that has already published.
+      - name: Announce the release in Discord
+        if: steps.release.outputs.releases_created == 'true'
+        env:
+          WEBHOOK: ${{ secrets.DISCORD_RELEASE_WEBHOOK }}
+          WEBHOOK_ALL: ${{ secrets.DISCORD_RELEASE_WEBHOOK_ALL }}
+          RELEASES: ${{ steps.release.outputs.releases }}
+          REPO: ${{ github.repository }}
+          SERVER_URL: ${{ github.server_url }}
+        run: |
+          set -euo pipefail
+
+          # Built with `if` rather than `[ -n "$x" ] && arr+=(...)`: under
+          # `set -e` a failing test at the end of a command list exits the step,
+          # so the shorter form would abort whenever a secret is unset.
+          targets=()
+          if [ -n "${WEBHOOK}" ]; then
+            targets+=("$WEBHOOK")
+          fi
+          # Skip an aggregate pointed at the same channel, so a single-channel
+          # setup that fills both secrets does not post twice.
+          if [ -n "${WEBHOOK_ALL}" ] && [ "${WEBHOOK_ALL}" != "${WEBHOOK}" ]; then
+            targets+=("$WEBHOOK_ALL")
+          fi
+
+          if [ ${#targets[@]} -eq 0 ]; then
+            echo "::notice::no Discord webhook secret set — nothing posted."
+            exit 0
+          fi
+
+          rm -f payload-*.json
+          python3 scripts/discord-release-payloads.py \
+            --releases "$RELEASES" \
+            --repo "$REPO" \
+            --server-url "$SERVER_URL"
+
+          # Every message and every target is attempted even if one fails, so a
+          # stale aggregate URL cannot hide a successful post to the project
+          # channel, and a rejected message cannot swallow the rest.
+          failed=0
+          shopt -s nullglob
+          for payload in payload-*.json; do
+            for target in "${targets[@]}"; do
+              if ! curl --silent --show-error --fail-with-body \
+                        --retry 3 --retry-delay 5 --retry-all-errors \
+                        -H "Content-Type: application/json" \
+                        -X POST -d @"$payload" "$target"; then
+                failed=1
+              fi
+            done
+          done
+
+          if [ "$failed" -ne 0 ]; then
+            echo "::error::at least one Discord post failed; see the output above."
+            exit 1
+          fi
+
+          echo "Announced to ${#targets[@]} Discord channel(s)."
