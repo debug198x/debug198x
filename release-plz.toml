@@ -14,6 +14,9 @@ publish = true
 git_release_enable = true
 git_tag_enable = true
 changelog_update = true
+# Only reader-facing changes earn a release. Release-process work uses `ci:` or
+# `chore(release):`; changelog filtering alone does not prevent a version bump.
+release_commits = "^(feat|fix|perf|revert)[(:]"
 # Package-prefixed tags even with a single crate: it keeps a second crate
 # unambiguous later, and a bare `v<version>` would collide with the tags this
 # history carried inside Asm198x.
