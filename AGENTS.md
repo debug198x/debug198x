@@ -28,6 +28,17 @@ concerns into the format is the change to argue about.
 
 ## Changing the format
 
+**The format is frozen at v1 (2026-08-18).** Additive change is free; a breaking
+shape change needs a new decision in
+[`decisions/debug198x-format.md`](decisions/debug198x-format.md), a
+`format_version` bump, and a migration path. `format_version` still reads
+`"0.1"` — that is the frozen v1 spec's version, not draft status, and bumping it
+breaks the Emu198x importer's exact-match check.
+
+Adding a variant to a `#[serde(untagged)]` enum is **not** additive: an
+unrecognised variant is a hard parse error failing the whole file, where an
+unknown record type or field is skipped.
+
 Both ends have to agree, and the writer ships before the reader can rely on it.
 Treat a field addition as a contract change affecting two repositories, not as a
 local edit — state what an old reader does with a new file, and what a new

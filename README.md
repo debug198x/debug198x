@@ -36,10 +36,19 @@ of them to be understood, it would not be a format.
 
 ## The format
 
-[`decisions/debug198x-format.md`](decisions/debug198x-format.md) records the
-design and the reasoning behind it — why NDJSON, why address-space qualifiers
-exist, and what a consumer must tolerate from a producer it is newer or older
-than.
+The format is **frozen at v1**. New record types and new fields may be added
+without a version break, and a conforming reader skips unknown record types and
+ignores unknown fields. A breaking shape change requires a `format_version`
+bump and a migration path.
+
+`format_version` reads `"0.1"` and denotes that frozen v1 specification. It is
+deliberately not `"1.0"`: the freeze changed the promise rather than the wire
+shape, and consumers validate the string by exact match.
+
+| | |
+|---|---|
+| **Specification** — write a reader or a writer against this | [`debug198x.md`](https://github.com/asm198x/docs/blob/main/debug198x.md) |
+| **Governance** — why it is this way, and how it may change | [`decisions/debug198x-format.md`](decisions/debug198x-format.md) |
 
 ## History
 
