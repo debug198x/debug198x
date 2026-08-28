@@ -12,6 +12,12 @@ the crate. Released history restarts at 0.1.0 here, under its own version.
 
 ## [Unreleased]
 
+## [0.1.1](https://github.com/debug198x/debug198x/compare/debug198x-v0.1.0...debug198x-v0.1.1) - 2026-08-28
+
+### Other
+
+- release v0.1.0 ([#1](https://github.com/debug198x/debug198x/pull/1))
+
 ## [0.1.0](https://github.com/debug198x/debug198x/releases/tag/debug198x-v0.1.0) - 2026-08-27
 
 ### Other
