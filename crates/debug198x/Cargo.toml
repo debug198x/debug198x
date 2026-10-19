@@ -5,7 +5,7 @@ description = "The Debug198x cross-CPU debug-info format for the 198x family —
 # the workspace version and reached 0.0.35 without most of those bumps saying
 # anything about it. Released history restarts at 0.1.0 here, the same choice
 # mediaspec198x made when it left build198x's lockstep.
-version = "0.1.0"
+version = "0.1.1"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
